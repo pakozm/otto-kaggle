@@ -19,13 +19,28 @@ local srnd = random(52958)
 local prnd = random(24925)
 local NUM_CLASSES  = 9
 local HSIZE        = tonumber(arg[1] or 256)
-local DEEP_SIZE    = tonumber(arg[2] or 3)
-local bunch_size   = tonumber(arg[3] or 256)
+local DEEP_SIZE    = tonumber(arg[2] or 2)
+local bunch_size   = tonumber(arg[3] or 512)
 local use_all      = tonumber(arg[4])
 local NUM_BAGS     = tonumber(arg[5] or 1)
 local MAX_FEATS    = tonumber(arg[6])
 
+local max_epochs = 10000
+
+local optimizer = "adadelta"
+local options = {
+  -- learning_rate = 0.0000,
+  -- momentum = 0.9,
+}
+
+local bagging_iteration=0
 local function train(train_data, train_labels, val_data, val_labels)
+  local HSIZE = HSIZE
+  bagging_iteration = bagging_iteration + 1
+  if bagging_iteration > 1 then
+    HSIZE = math.round( HSIZE * (prnd:rand(1.5) + 0.25) )
+  end
+  print("# HSIZE", HSIZE)
   local isize = train_data:dim(2)
   local model = ann.components.stack()
   for i=1,DEEP_SIZE do
@@ -39,7 +54,7 @@ local function train(train_data, train_labels, val_data, val_labels)
   local trainer = trainable.supervised_trainer(model,
                                                ann.loss.multi_class_cross_entropy(),
                                                bunch_size,
-                                               ann.optimizer.adadelta())
+                                               ann.optimizer[optimizer]())
   trainer:build()
   trainer:randomize_weights{
     random = wrnd,
@@ -50,6 +65,9 @@ local function train(train_data, train_labels, val_data, val_labels)
   }
   for _,b in trainer:iterate_weights("b.*") do b:zeros() end
   trainer:set_layerwise_option("w.*", "weight_decay", 0.01)
+  for name,value in ipairs(options) do
+    trainer:set_option(name, value)
+  end
   
   local train_in_ds,train_out_ds = create_ds(train_data, train_labels,
                                              NUM_CLASSES)
@@ -60,10 +78,11 @@ local function train(train_data, train_labels, val_data, val_labels)
                                             variance = 0.2 }
   
   local best = train_mlp(trainer,
+                         use_all or max_epochs,
                          { input_dataset = train_in_ds,
                            output_dataset = train_out_ds,
                            shuffle = srnd,
-                           replacement = 2560, },
+                           replacement = math.max(2560, bunch_size) },
                          { input_dataset = val_in_ds,
                            output_dataset = val_out_ds },
                          use_all)

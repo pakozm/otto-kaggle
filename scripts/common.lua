@@ -60,17 +60,17 @@ local function create_ds(data, labels, NUM_CLASSES)
   return in_ds,out_ds
 end
 
-local function train_mlp(trainer, train_tbl, val_tbl, use_all)
+local function train_mlp(trainer, max_epochs, train_tbl, val_tbl, use_all)
   local criterion = trainable.stopping_criteria.make_max_epochs_wo_imp_relative(2.0)
   local pocket = trainable.train_holdout_validation{ min_epochs=100,
-                                                     max_epochs=use_all or 1000,
+                                                     max_epochs=use_all or max_epochs,
                                                      stopping_criterion = criterion }
   while pocket:execute(function()
       local tr = trainer:train_dataset(train_tbl)
       local va = trainer:validate_dataset(val_tbl)
       return trainer,tr,va
   end) do
-    print(pocket:get_state_string())
+    print(pocket:get_state_string(), trainer:norm2("w.*"), trainer:norm2("b.*"))
   end
   return pocket:get_state_table().best
 end

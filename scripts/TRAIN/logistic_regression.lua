@@ -22,7 +22,7 @@ local bunch_size   = tonumber(arg[1] or 512)
 local use_all      = tonumber(arg[2])
 local NUM_BAGS     = tonumber(arg[3] or 1)
 local MAX_FEATS    = tonumber(arg[4])
-local INTERACTIONS = tonumber(arg[5] or 0)
+local INTERACTIONS = tonumber(arg[5] or 100)
 
 local optimizer = "adadelta"
 local options = {
@@ -38,7 +38,7 @@ local function train(train_data, train_labels, val_data, val_labels)
   local model = stdml.linear_model.logistic_regression{
     l2 = 0.01,
     shuffle = srnd,
-    verbose = true,
+    verbose = false,
     bunch_size = bunch_size,
     method = optimizer,
     options = options,

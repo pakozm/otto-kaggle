@@ -204,9 +204,9 @@ local function bagging(NUM_CLASSES, NUM_BAGS, MAX_FEATS, rnd,
     if MAX_FEATS < train_data:dim(2) then
       local idx = matrixInt32(rnd:shuffle(train_data:dim(2)))[{ {1,MAX_FEATS} }]
       transform = function(x) return x:index(2,idx) end
-      train_data = transform(train_data)
     end
-    local mdl = train(train_data, train_labels, val_data, val_labels)
+    local mdl = train(transform(train_data), train_labels,
+                      transform(val_data), val_labels)
     local outname = os.tmpname()
     models[i] = { outname, transform }
     util.serialize(mdl, outname, "binary")

@@ -24,6 +24,7 @@ local bunch_size   = tonumber(arg[3] or 512)
 local use_all      = tonumber(arg[4])
 local NUM_BAGS     = tonumber(arg[5] or 1)
 local MAX_FEATS    = tonumber(arg[6])
+local INTERACTIONS = tonumber(arg[7] or 0)
 
 local max_epochs = 10000
 
@@ -101,6 +102,7 @@ local preprocess_conf = { add_nz=true,
                           add_sum=true,
                           add_mean=false,
                           add_sd=true,
+                          add_interactions=INTERACTIONS,
                           use_tf_idf=false }
 
 local all_train_data,all_train_labels = load_CSV("DATA/train.csv", false)
@@ -157,4 +159,4 @@ local test_data = stats.pca.whitening(test_data,U,S,eigen_value)
 local test_p = predict_mlp(bagging_models, test_data)
 print(test_p)
 
-write_submission("result.csv", test_p)
+write_submission("result.mlp.csv", test_p)

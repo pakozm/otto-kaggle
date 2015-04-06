@@ -15,4 +15,4 @@ test <- data.frame(test)
 
 result <- predict(model, newdata=test, type='prob')
 result <- data.frame(id = test$id, result)
-write.csv(result, file = "result.R.csv",row.names=FALSE, na="")
+write.csv(result, file = "result.mn.csv",row.names=FALSE, na="")

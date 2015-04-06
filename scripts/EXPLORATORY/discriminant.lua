@@ -4,25 +4,14 @@ local mop = matrix.op
 local bunch_size = 256
 
 local data,labels = load_CSV("DATA/train.csv")
-local N = data:dim(1)
-local D = data:dim(2)
-local interactions = matrix(N, D*D/2.0)
-local k=1
-for i=1,D-1 do
-  collectgarbage("collect")
-  print("#",i)
-  for j=i+1,D do
-    interactions[{':',k}]:copy( data[{':',i}] ):cmul( data[{':',j}] )
-    k=k+1
-  end
-end
-local data = matrix.join(2, data, interactions)
-data:log1p()
--- local data = common.preprocess(data)
+local data = common.preprocess(data, { add_nz=true, add_sum=true, add_sd=true })
 local data,center,scale = stats.standardize(data, { center=center, scale=scale })
--- local clusters = common.compute_clusters(data, labels, 9)
+local clusters = common.compute_clusters(data, labels, 9)
 -- local data = common.add_clusters_similarity(data, clusters)
-print("# Computing correlations")
+
+local out_ds = dataset.indexed(dataset.matrix(labels),
+                               { dataset.identity(9) })
+
 local cors = matrix(data:dim(2),9)
 for y=1,9 do
   collectgarbage("collect")
@@ -33,18 +22,7 @@ for y=1,9 do
   end
 end
 
-local cors_sum = mop.abs(cors):sum(2)
-local cors_rank = cors_sum:order_rank()
-cors_rank:toFilename("cors_rank.mat", "ascii")
-cors_sum:toFilename("cors_sum.mat", "ascii")
-
 ImageIO.write(Image(cors:abs():adjust_range(0,1)), "cors_fy.png")
-
-os.exit(0)
-
-local out_ds = dataset.indexed(dataset.matrix(labels),
-                               { dataset.identity(9) })
-
 
 local cors = stats.cor(data)
 ImageIO.write(Image(cors:abs():adjust_range(0,1)), "cors_ff.png")

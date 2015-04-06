@@ -29,5 +29,5 @@ def save_csv(filename, data):
     ids = np.array( [ [i+1] for i in range(data.shape[0]) ] )
     data = np.concatenate( (ids,data), axis=1)
     fmt = "%.10f"
-    np.savetxt(filename, data, delimiter=",", header=header,
+    np.savetxt(filename, data, delimiter=",", header=header, comments="",
                fmt=[ "%.0f", fmt, fmt, fmt, fmt, fmt, fmt, fmt, fmt, fmt] )

@@ -44,15 +44,11 @@ local function train(train_data, train_labels, val_data, val_labels)
     options = options,
   }
   model:fit(train_data, train_labels, val_data, val_labels)
-  return model.trainer
+  return model
 end
 
 local predict_mlp = function(models, data)
-  local func = function(trainer, data)
-    local model = stdml.linear_model.logistic_regression{
-      bunch_size = bunch_size
-    }
-    model.trainer = trainer
+  local func = function(model, data)
     return model:predict_proba(data)
   end
   local p = predict(models, data, func)

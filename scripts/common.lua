@@ -111,6 +111,9 @@ local function preprocess(data,args,extra)
   if args.add_nz then
     table.insert(new_cols, nz)
   end
+  if args.add_max then
+    table.insert(new_cols, (data:max(2)))
+  end
   if args.add_sum then
     table.insert(new_cols, data:sum(2))
   end
@@ -127,9 +130,11 @@ local function preprocess(data,args,extra)
     assert(D*(D-1)/2.0 == sum:dim(1))
     assert(D*(D-1)/2.0 == order:dim(1))
     for a=1,args.add_interactions do
-      local k = order[order:dim(1) - a + 1]
+      local k = order[order:dim(1) - a + 1] - 1
       local i = D - 2 - math.floor(math.sqrt(-8*k + 4*D*(D-1)-7)/2.0 - 0.5)
-      local j = k + i + 1 - D*(D-1)/2 + (D-i)*((D-i)-1)/2
+      local j = k + i + 1 - D*(D-1)/2 + (D-i)*((D-i)-1)/2 + 1
+      i,j = i+1,j+1
+      assert(i <= D and j <= D and i >= 0 and j >= 0)
       local col = mop.cmul(data[{':',i}], data[{':',j}])
       table.insert(new_cols, col)
     end
@@ -141,10 +146,17 @@ local function preprocess(data,args,extra)
   if not args.use_tf_idf then
     data = mop.log1p(data)
   end
+  collectgarbage("collect")
   if #new_cols > 0 then
     iterator(new_cols):apply(matrix.."log1p")
-    data = matrix.join(2, data, table.unpack(new_cols))
+    if args.ignore_counts then
+      data = matrix.join(2, table.unpack(new_cols))
+    else
+      data = matrix.join(2, data, table.unpack(new_cols))
+    end
+    new_cols = nil
   end
+  collectgarbage("collect")
   return data,{ idf=idf }
 end
 

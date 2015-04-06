@@ -99,11 +99,13 @@ local predict_mlp = function(models, data)
 end
 
 local preprocess_conf = { add_nz=true,
+                          add_max=true,
                           add_sum=true,
                           add_mean=false,
                           add_sd=true,
                           add_interactions=INTERACTIONS,
-                          use_tf_idf=false }
+                          use_tf_idf=false,
+                          ignore_counts = false, }
 
 local all_train_data,all_train_labels = load_CSV("DATA/train.csv", false)
 local all_train_data,extra = preprocess(all_train_data, preprocess_conf)

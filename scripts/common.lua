@@ -124,17 +124,18 @@ local function preprocess(data,args,extra)
     table.insert(new_cols, (stats.var(data,2):scal(data:dim(2)-1)/nz):sqrt())
   end
   if args.add_interactions then
-    local sum   = matrix.fromFilename("DATA/cors_sum.mat")
-    local order = matrixInt32.fromFilename("DATA/cors_order.mat")
+    local sum   = matrix.fromFilename("DATA/coef_sum.mat")
+    local order = matrixInt32.fromFilename("DATA/coef_order.mat")
     local D = data:dim(2)
-    assert(D*(D-1)/2.0 == sum:dim(1))
+    assert(D*(D-1)/2.0 == sum:dim(2))
     assert(D*(D-1)/2.0 == order:dim(1))
     for a=1,args.add_interactions do
+      local n = D
       local k = order[order:dim(1) - a + 1] - 1
-      local i = D - 2 - math.floor(math.sqrt(-8*k + 4*D*(D-1)-7)/2.0 - 0.5)
-      local j = k + i + 1 - D*(D-1)/2 + (D-i)*((D-i)-1)/2 + 1
+      local i = n - 2 - math.floor(math.sqrt(-8*k + 4*n*(n-1)-7)/2.0 - 0.5)
+      local j = k + i + 1 - n*(n-1)/2 + (n-i)*((n-i)-1)/2
       i,j = i+1,j+1
-      assert(i <= D and j <= D and i >= 0 and j >= 0)
+      assert(i <= D and j <= D and i >= 0 and j >= 0 and i<j)
       local col = mop.cmul(data[{':',i}], data[{':',j}])
       table.insert(new_cols, col)
     end

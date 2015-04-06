@@ -1,3 +1,4 @@
+local stdml = require "stdml"
 local common = require "scripts.common"
 local load_CSV = common.load_CSV
 local mop = matrix.op
@@ -19,16 +20,36 @@ end
 local data = interactions
 data:log1p()
 local data,center,scale = stats.standardize(data, { center=center, scale=scale })
+
+print("# Training logistic regression model")
+local Y = matrix(9,9):zeros():diag(1):index(1,matrixInt32(labels:toTable()))
+local model = stdml.linear_model.logistic_regression{ fit_intercept = false,
+                                                      verbose = true,
+                                                      l2 = 0.01,
+                                                      min_epochs = 20 }
+model:fit(data, labels)
+local coef = model.coef_
+coef:toFilename("DATA/coef.mat", "ascii")
+local coef_sum = mop.abs(coef):sum(1)
+local coef_order = coef_sum:order()
+coef_sum:toFilename("DATA/coef_sum.mat", "ascii")
+coef_order:toFilename("DATA/coef_order.mat", "ascii")
+
 print("# Computing correlations")
 local cors = matrix(data:dim(2),9)
+-- local aux = { data }
 for y=1,9 do
   collectgarbage("collect")
-  local ym = labels:eq(y):to_float()labels:eq(y):to_float()
+  local ym = labels:eq(y):to_float()
   for f=1,data:dim(2) do
-    local c = stats.cor(data[{':',f}], ym, { centered=true })
-    cors[{f,y}] = c:get(1,1)
+    local c = stats.cor(data[{':',f}], ym, { centered=true }):get(1,1)
+    cors[{f,y}] = c
   end
+  -- table.insert(aux, ym)
 end
+
+-- local aux = matrix.join(2, aux)
+-- aux:toTabFilename("interactions.dat")
 
 local cors_sum = mop.abs(cors):sum(2)
 local cors_order = cors_sum:order()

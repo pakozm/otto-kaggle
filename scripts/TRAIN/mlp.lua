@@ -105,9 +105,9 @@ local preprocess_conf = { add_nz=true,
                           add_sd=true,
                           add_interactions=INTERACTIONS,
                           use_tf_idf=false,
-                          ignore_counts = false, }
+                          ignore_counts=false, }
 
-local all_train_data,all_train_labels = load_CSV("DATA/train.csv", false)
+local all_train_data,all_train_labels = load_CSV("DATA/train.csv")
 local all_train_data,extra = preprocess(all_train_data, preprocess_conf)
 -- local clusters = compute_clusters(all_train_data, all_train_labels, NUM_CLASSES)
 -- local all_train_data = add_clusters_similarity(all_train_data, clusters)
@@ -151,7 +151,7 @@ cm:printConfusion()
 
 -----------------------------------------------------------------------------
 
-local test_data,test_labels = load_CSV("DATA/test.csv", false)
+local test_data,test_labels = load_CSV("DATA/test.csv")
 local test_data = preprocess(test_data, preprocess_conf, extra)
 local test_data = stats.standardize(test_data, { center=center, scale=scale })
 --local test_data = add_clusters_similarity(test_data, clusters)

@@ -362,23 +362,15 @@ end
 local function line_search(loss, h1, h2, Y)
   local log_h1 = mop.log(h1)
   local log_h2 = mop.log(h2)
-  local xp = 0.0
-  local eta = 0.1
+  local xp = matrix{ 0.0 }
   local l
-  for i=1,3000 do
-    collectgarbage("collect")
-    local x = logistic(xp)
-    local hat_log_y = mop.log( (1-x)*h1 + x*h2 )
-    l = loss:compute_loss( hat_log_y, Y )
-    local g = loss:gradient( hat_log_y, Y ):cmul( -1.0*h1 + h2)
-    g:scal( 1/g:norm2() )
-    local new_xp = xp - (eta*g:sum())*logistic_der(x)
-    local diff = xp - new_xp
-    xp = new_xp
-    if i%20==0 then print("# LINE", i, l, "::", x) end
-    if diff^2 < 1e-06 then break end
-  end
-  local x = logistic(xp)
+  local optimizer = ann.optimizer.simplex()
+  optimizer:execute(function(w)
+      local x = logistic(w.xp[1])
+      local hat_log_y = mop.log( (1-x)*h1 + x*h2 )
+      l = loss:compute_loss( hat_log_y, Y )
+      return l end, { xp=xp })
+  local x = logistic(xp[1])
   print("# LINE LAST", l, "::", x)
   return x
 end
@@ -398,11 +390,11 @@ local function gradient_boosting(loss, learning_rate, LP,
     do
       local train_data,train_labels = train_data,train_labels
       --if i > 1 then -- first iteration uses all training data
-        train_data,train_labels = weighted_bootstrap(1.0,
-                                                     weights,
-                                                     rnd,
-                                                     train_data,
-                                                     train_labels)
+      train_data,train_labels = weighted_bootstrap(1.0,
+                                                   weights,
+                                                   rnd,
+                                                   train_data,
+                                                   train_labels)
       --end
       model = train(train_data, train_labels, val_data, val_labels)
     end

@@ -19,7 +19,7 @@ local NUM_BAGS     = tonumber(arg[4] or 10)
 
 local ver="noname"
 
-local max_epochs = 10000
+local max_epochs = 1000
 
 local optimizer = "adadelta"
 local options = {
@@ -52,7 +52,7 @@ local function train(train_data, train_labels, val_data, val_labels)
     use_fanout = true,
   }
   for _,b in trainer:iterate_weights("b.*") do b:zeros() end
-  trainer:set_layerwise_option("w.*", "weight_decay", 0.01)
+  trainer:set_layerwise_option("w.*", "weight_decay", 0.00)
   for name,value in ipairs(options) do
     trainer:set_option(name, value)
   end
@@ -99,7 +99,7 @@ print("# DATA SIZES", train_data:dim(1), train_data:dim(2),
 --                        train, predict_mlp)
 
 local models = gradient_boosting(ann.loss.multi_class_cross_entropy(),
-                                 1.0, 1.0,
+                                 1.0, 3.0,
                                  NUM_CLASSES, NUM_BAGS, rnd,
                                  train_data, train_labels,
                                  val_data, val_labels,
@@ -126,4 +126,4 @@ local test_data = matrix.fromTabFilename("DATA/test_feats.%s.split.mat.gz"%{ver}
 local test_p = predict_mlp(models, test_data)
 print(test_p)
 
-write_submission("result.mlp.csv", test_p)
+write_submission("result.bmlp.csv", test_p)

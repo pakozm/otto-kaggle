@@ -15,7 +15,7 @@ local DEEP_SIZE    = tonumber(arg[2] or 2)
 local bunch_size   = tonumber(arg[3] or 512)
 local NUM_BAGS     = tonumber(arg[4] or 1)
 local MAX_FEATS    = tonumber(arg[5])
-local wd           = tonumber(arg[6] or 0.00)
+local wd           = tonumber(arg[6] or 0.0)
 local var          = tonumber(arg[7] or 0.2)
 
 local max_epochs = 10000

@@ -30,8 +30,8 @@ val_p = model.predict_proba(val_feats)
 print sk.metrics.log_loss(val_labels, val_p)
 common.save_csv("validation.bt.csv", val_p)
 
-train_feats = np.concatenate( (train_feats, val_feats), axis=1 )
-train_labels = np.concatenate( (train_labels, val_labels), axis=1 )
+train_feats = np.concatenate( (train_feats, val_feats), axis=0 )
+train_labels = np.concatenate( (train_labels, val_labels), axis=0 )
 
 model = fit(train_feats, train_labels)
 test_feats = np.loadtxt("DATA/test_feats.noname.split.mat.gz")

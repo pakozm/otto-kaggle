@@ -229,10 +229,11 @@ local function predict(models, data, calculate)
 end
 
 local function weighted_bootstrap(alpha, weights, rnd, ...)
-  local alpha = alpha or 1
-  local dice = random.dice(weights:toTable())
   local t = table.pack(...)
   local N = alpha*t[1]:dim(1)
+  local alpha = alpha or 1
+  local weights = weights or matrix(N,1):fill(1/N)
+  local dice = random.dice(weights:toTable())
   local boot = matrixInt32(N):map(function(x) return dice:thrown(rnd) end)
   local r = iterator(t):map(function(m) return m:index(1, boot) end):table()
   return table.unpack(r)
@@ -382,7 +383,7 @@ local function line_search(loss, h1, h2, Y)
   return x
 end
 
-local function gradient_boosting(loss, learning_rate,
+local function gradient_boosting(loss, learning_rate, LP,
                                  NUM_CLASSES, NUM_ITERS, rnd,
                                  train_data, train_labels,
                                  val_data, val_labels, train, predict)
@@ -396,13 +397,13 @@ local function gradient_boosting(loss, learning_rate,
     local model
     do
       local train_data,train_labels = train_data,train_labels
-      if i > 1 then -- first iteration uses all training data
+      --if i > 1 then -- first iteration uses all training data
         train_data,train_labels = weighted_bootstrap(1.0,
                                                      weights,
                                                      rnd,
                                                      train_data,
                                                      train_labels)
-      end
+      --end
       model = train(train_data, train_labels, val_data, val_labels)
     end
     local outname = os.tmpname()
@@ -427,7 +428,7 @@ local function gradient_boosting(loss, learning_rate,
     local grads = loss:gradient(log_h, Y)
     weights = weights or matrix(N, 1)
     grads:sum(2, weights)
-    weights:abs():pow(0.5)
+    weights:abs():pow(1/LP)
     weights:scal( 1/weights:sum() )
     --
     print("# TR", (ann.loss.multi_class_cross_entropy():compute_loss(log_h, Y)))

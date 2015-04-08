@@ -417,10 +417,10 @@ local function gradient_boosting(loss, learning_rate, LP,
     local h = predict(models, train_data)
     local log_h = mop.log( h )
     local err   = loss:compute_loss(log_h, Y)
-    local grads = loss:gradient(log_h, Y)
+    local abs_grads = loss:gradient(log_h, Y):abs()
     weights = weights or matrix(N, 1)
-    grads:sum(2, weights)
-    weights:abs():pow(1/LP)
+    abs_grads:sum(2, weights)
+    weights:pow(1/LP)
     weights:scal( 1/weights:sum() )
     --
     print("# TR", (ann.loss.multi_class_cross_entropy():compute_loss(log_h, Y)))

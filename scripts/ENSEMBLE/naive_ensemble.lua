@@ -34,16 +34,23 @@ local K = #arg
 print(header)
 local finished = false
 while true do
-  local prob,id = 0
+  local prob,id = {},nil
   local lines = iterator(ipairs(f)):select(2):call("read","*l"):enumerate()
   for i,line in lines do
     if not line then
       finished=true
+      break
     else
-      id,p = line:match("(.+)%,(.+)")
-      prob = prob + tonumber(p)
+      id = line:match("^([^,]+)%,.*")
+      local k=0
+      for p in line:gmatch(",([^,]+)") do
+        k=k+1
+        prob[k] = (prob[k] or 0) + (assert(tonumber(p), "Unable to convert " .. p))
+      end
     end
   end
   if not id then break end
-  printf("%s,%g\n", id, prob/K)
+  printf("%s,%s\n", id,
+         iterator(prob):map(bind(math.mul, 1/K)):
+           map(bind(string.format, nil, "%g")):concat(","))
 end

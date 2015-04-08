@@ -20,6 +20,7 @@ end
 local data = interactions
 data:log1p()
 local data,center,scale = stats.standardize(data, { center=center, scale=scale })
+-- data:toTabFilename("DATA/interactions.dat")
 
 print("# Training logistic regression model")
 local Y = matrix(9,9):zeros():diag(1):index(1,matrixInt32(labels:toTable()))
@@ -49,7 +50,6 @@ for y=1,9 do
 end
 
 -- local aux = matrix.join(2, aux)
--- aux:toTabFilename("interactions.dat")
 
 local cors_sum = mop.abs(cors):sum(2)
 local cors_order = cors_sum:order()

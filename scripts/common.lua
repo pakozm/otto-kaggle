@@ -107,37 +107,75 @@ end
 local function preprocess(data,args,extra)
   local extra = extra or {}
   local new_cols,idf = {},nil
-  local nz = data:gt(0):to_float():sum(2)
+  local nz = data:gt(0):to_float():sum(2):clamp(1.0,mathcore.limits.float.infinity())
   if args.add_nz then
-    table.insert(new_cols, nz)
+    table.insert(new_cols, mop.log1p(nz))
   end
   if args.add_max then
-    table.insert(new_cols, (data:max(2)))
+    table.insert(new_cols, (data:max(2)):log1p())
   end
   if args.add_sum then
-    table.insert(new_cols, data:sum(2))
+    table.insert(new_cols, data:sum(2):log1p())
   end
   if args.add_mean then
-    table.insert(new_cols, data:sum(2) / nz)
+    table.insert(new_cols, (data:sum(2) / nz):log1p())
   end
   if args.add_sd then
-    table.insert(new_cols, (stats.var(data,2):scal(data:dim(2)-1)/nz):sqrt())
+    table.insert(new_cols, (stats.var(data,2):scal(data:dim(2)-1)/nz):sqrt():log1p())
   end
-  if args.add_interactions then
-    local sum   = matrix.fromFilename("DATA/coef_sum.mat")
-    local order = matrixInt32.fromFilename("DATA/coef_order.mat")
+  if args.add_interactions and args.add_interactions>0 then
     local D = data:dim(2)
-    assert(D*(D-1)/2.0 == sum:dim(2))
-    assert(D*(D-1)/2.0 == order:dim(1))
-    for a=1,args.add_interactions do
-      local n = D
-      local k = order[order:dim(1) - a + 1] - 1
-      local i = n - 2 - math.floor(math.sqrt(-8*k + 4*n*(n-1)-7)/2.0 - 0.5)
-      local j = k + i + 1 - n*(n-1)/2 + (n-i)*((n-i)-1)/2
-      i,j = i+1,j+1
-      assert(i <= D and j <= D and i >= 0 and j >= 0 and i<j)
-      local col = mop.cmul(data[{':',i}], data[{':',j}])
-      table.insert(new_cols, col)
+    local interactions = matrix(data:dim(1), D*(D-1)/2.0)
+    local k=0
+    print("# Interactions")
+    for i=1,D-1 do
+      collectgarbage("collect")
+      for j=i+1,D do
+        k=k+1
+        interactions[{':',k}]:copy( data[{':',i}] ):cmul( data[{':',j}] )
+      end
+    end
+    interactions:log1p()
+    extra.interactions = extra.interactions or {}
+    local center,scale = extra.interactions.center,extra.interactions.scale
+    local interactions,center,scale = stats.standardize(interactions,
+                                                        { center=center,
+                                                          scale=scale })
+    local U,S,VT = extra.interactions.U,extra.interactions.S,nil
+    if not U then
+      print("# PCA")
+      U,S,VT = stats.pca(interactions, { centered = true })
+    end
+    local takeN,eigen_value,prob_mass=stats.pca.threshold(S, 0.90)
+    print("# PCA INTERACTIONS",takeN,eigen_value,prob_mass)
+    local slice={1,args.add_interactions}
+    interactions = stats.pca.whitening(interactions,
+                                       U[{':',slice}],
+                                       S[{slice,slice}],
+                                       eigen_value)
+    table.insert(new_cols, interactions)
+    extra.interactions = {
+      center = center,
+      scale = scale,
+      U = U,
+      S = S,
+    }
+    if false then
+      local sum   = matrix.fromFilename("DATA/coef_sum.mat")
+      local order = matrixInt32.fromFilename("DATA/coef_order.mat")
+      local D = data:dim(2)
+      assert(D*(D-1)/2.0 == sum:dim(2))
+      assert(D*(D-1)/2.0 == order:dim(1))
+      for a=1,args.add_interactions do
+        local n = D
+        local k = order[order:dim(1) - a + 1] - 1
+        local i = n - 2 - math.floor(math.sqrt(-8*k + 4*n*(n-1)-7)/2.0 - 0.5)
+        local j = k + i + 1 - n*(n-1)/2 + (n-i)*((n-i)-1)/2
+        i,j = i+1,j+1
+        assert(i <= D and j <= D and i >= 0 and j >= 0 and i<j)
+        local col = mop.cmul(data[{':',i}], data[{':',j}])
+        table.insert(new_cols, col:log1p())
+      end
     end
   end
   if args.use_tf_idf then
@@ -149,7 +187,6 @@ local function preprocess(data,args,extra)
   end
   collectgarbage("collect")
   if #new_cols > 0 then
-    iterator(new_cols):apply(matrix.."log1p")
     if args.ignore_counts then
       data = matrix.join(2, table.unpack(new_cols))
     else
@@ -158,7 +195,7 @@ local function preprocess(data,args,extra)
     new_cols = nil
   end
   collectgarbage("collect")
-  return data,{ idf=idf }
+  return data,extra
 end
 
 local function split(rnd, p, ...)
@@ -177,23 +214,226 @@ end
 
 local function predict(models, data, calculate)
   local p
+  local sum = 0
   for i=1,#models do
     collectgarbage("collect")
-    local filename,transform = table.unpack(models[i])
+    local filename,transform,w = table.unpack(models[i])
+    w = w or 1/#models
     local model = util.deserialize(filename)
     local current = calculate(model, transform(data))
-    if not p then p = current else p:axpy(1.0, current) end
+    if not p then p = current:scal(w) else p:axpy(w, current) end
+    sum = sum + w
   end
-  return p:scal(1/#models)
+  p:scal(1/sum)
+  return p
+end
+
+local function weighted_bootstrap(alpha, weights, rnd, ...)
+  local alpha = alpha or 1
+  local dice = random.dice(weights:toTable())
+  local t = table.pack(...)
+  local N = alpha*t[1]:dim(1)
+  local boot = matrixInt32(N):map(function(x) return dice:thrown(rnd) end)
+  local r = iterator(t):map(function(m) return m:index(1, boot) end):table()
+  return table.unpack(r)
 end
 
 local function bootstrap(rnd, ...)
   local t = table.pack(...)
   local N = t[1]:dim(1)
-  local boot = matrixInt32(N)
-  for i=1,N do boot[i] = rnd:randInt(1,N) end
-  local r = iterator(t):map(function(m) return m:index(1, boot) end):table()
-  return table.unpack(r)
+  return weighted_bootstrap(nil, matrix(N):fill(1/N), rnd, ...)
+end
+
+local function one_hot(train_labels, C)
+  return dataset.indexed(dataset.matrix(train_labels),
+                         { dataset.identity(C) }):toMatrix()
+end
+
+-- http://web.stanford.edu/~hastie/Papers/samme.pdf (SAMME)
+local function adaboost_SAMME_step(NUM_CLASSES, h_t, train_labels, ...)
+  local N = train_labels:dim(1)
+  local _,w = ...
+  local w = w or matrix(N):fill(1/N)
+  local _,I = ann.loss.zero_one():compute_loss(h_t, train_labels)
+  -- weighted classification error loss
+  local err = mop.cmul( I, w ):sum()/w:sum()
+  -- local alpha = (math.log( (1 - err) / err) + math.log(NUM_CLASSES-1))
+  local alpha = (math.log( (1 - err) / err) + math.log(NUM_CLASSES-1))
+  if alpha < 0 then
+    return
+  end
+  -- w:cmul( mop.exp( alpha * I ) )  
+  w:cmul( mop.scal(I, 0.5/err) + mop.complement(I):scal(0.5/(1-err)) )
+  w:scal( 1/w:sum() )
+  return alpha,w
+end
+
+-- http://www.cis.upenn.edu/~mkearns/teaching/COLT/boostingexperiments.pdf (AdaBoost.M2)
+-- http://www.en-trust.at/eibl/wp-content/uploads/sites/3/2013/08/Eibl01_ECML_digitboost.pdf
+-- http://citeseerx.ist.psu.edu/viewdoc/download?doi=10.1.1.20.7205&rep=rep1&type=pdf
+local function adaboost_M2_step(NUM_CLASSES, h_t, train_labels, ...)
+  local N = train_labels:dim(1)
+  local _,D,w,Y,B,q,W = ...
+  local Y = Y or one_hot(train_labels, NUM_CLASSES)
+  local B = B or mop.complement( Y )
+  local D = D or matrix(N):fill(1/N)
+  local w = w or matrix(N,NUM_CLASSES):fill(1/(N*(NUM_CLASSES-1))):cmul(B)
+  local W = W or w:sum(2)
+  local q = matrix.ext.broadcast(w.div, w, W, q):cmul(B)
+  --
+  local c_h_star = mop.cmul(h_t, Y):sum(2):complement()
+  local h_g = mop.cmul(h_t, B)
+  local ratio = c_h_star + mop.cmul( h_g, q ):sum(2):scal( 1/(NUM_CLASSES-1) )
+  local pseudo_loss = 0.5 * mop.cmul(D, ratio):sum()
+  if pseudo_loss > 0.5 then
+    return
+  end
+  local alpha = 0.5 * math.log( (1 - pseudo_loss) / pseudo_loss )
+  local ratio = matrix.ext.broadcast(math.add, c_h_star, h_g):scal( -alpha ):exp()
+  w:cmul( ratio ):cmul( B )
+  --
+  local W = w:sum(2)
+  D:copy(W):scal(1/W:sum())
+  -- alpha value, samples distribution, besides internal state
+  return alpha,D,w,Y,B,q,W
+end
+
+local function adaboost(method,
+                        NUM_CLASSES, NUM_ITERS, rnd,
+                        train_data, train_labels,
+                        val_data, val_labels, train, predict)
+  local alpha,weights,method_step
+  local state = {}
+  local Y = one_hot(train_labels, NUM_CLASSES)
+  if method == "M2" then
+    method_step = adaboost_M2_step
+  elseif method == "SAMME" then
+    method_step = adaboost_SAMME_step
+  else
+    error("Unknown adaboost method")
+  end
+  local models = {}
+  local transform = function(x) return x end
+  for i=1,NUM_ITERS do
+    collectgarbage("collect")
+    local model
+    do
+      local train_data,train_labels = train_data,train_labels
+      if i > 1 then -- first iteration uses all training data
+        train_data,train_labels = weighted_bootstrap(1.0,
+                                                     weights,
+                                                     rnd,
+                                                     train_data,
+                                                     train_labels)
+      end
+      model = train(train_data, train_labels, val_data, val_labels)
+    end
+    local outname = os.tmpname()
+    models[i] = { outname, transform }
+    util.serialize(model, outname, "binary")
+    --
+    -- FIXME: clamp if necessary?
+    local h = predict({ models[i] }, train_data)
+    state = table.pack(method_step(NUM_CLASSES, h, train_labels,
+                                   table.unpack(state)))
+    alpha,weights = state[1],state[2]
+    if not alpha then break end
+    models[i][3] = alpha
+    --
+    local p = predict(models, train_data):log()
+    -- print(weights)
+    print("# ALPHA", models[i][3])
+    print("# TR", (ann.loss.multi_class_cross_entropy():compute_loss(p, Y)))
+    weights:scal(1/weights:sum())
+    -- weights:toTabFilename("jarl-%04d.mat"%{ i })
+  end
+  return models
+end
+
+local function logistic(x)
+  return 1/(1 + math.exp(-x))
+end
+
+local function logistic_der(x)
+  return x*(1-x)
+end
+
+local function line_search(loss, h1, h2, Y)
+  local log_h1 = mop.log(h1)
+  local log_h2 = mop.log(h2)
+  local xp = 0.0
+  local eta = 0.1
+  local l
+  for i=1,3000 do
+    collectgarbage("collect")
+    local x = logistic(xp)
+    local hat_log_y = mop.log( (1-x)*h1 + x*h2 )
+    l = loss:compute_loss( hat_log_y, Y )
+    local g = loss:gradient( hat_log_y, Y ):cmul( -1.0*h1 + h2)
+    g:scal( 1/g:norm2() )
+    local new_xp = xp - (eta*g:sum())*logistic_der(x)
+    local diff = xp - new_xp
+    xp = new_xp
+    if i%20==0 then print("# LINE", i, l, "::", x) end
+    if diff^2 < 1e-06 then break end
+  end
+  local x = logistic(xp)
+  print("# LINE LAST", l, "::", x)
+  return x
+end
+
+local function gradient_boosting(loss, learning_rate,
+                                 NUM_CLASSES, NUM_ITERS, rnd,
+                                 train_data, train_labels,
+                                 val_data, val_labels, train, predict)
+  local state = {}
+  local N = train_data:dim(1)
+  local Y = one_hot(train_labels, NUM_CLASSES)
+  local models = {}
+  local transform = function(x) return x end
+  for i=1,NUM_ITERS do
+    collectgarbage("collect")
+    local model
+    do
+      local train_data,train_labels = train_data,train_labels
+      if i > 1 then -- first iteration uses all training data
+        train_data,train_labels = weighted_bootstrap(1.0,
+                                                     weights,
+                                                     rnd,
+                                                     train_data,
+                                                     train_labels)
+      end
+      model = train(train_data, train_labels, val_data, val_labels)
+    end
+    local outname = os.tmpname()
+    model_tbl = { outname, transform }
+    util.serialize(model, outname, "binary")
+    -- compute model combination coefficient
+    local alpha = 1.0
+    if #models > 0 then
+      -- FIXME: clamp if necessary?
+      -- FIXME: this can be taken from previous iteration
+      local old_h = predict(models, train_data)
+      local h = predict({ model_tbl }, train_data)
+      alpha = line_search(loss, old_h, h, Y)
+      for k=1,#models do models[k][3] = models[k][3] * (1.0-alpha) end
+    end
+    models[i] = model_tbl
+    models[i][3] = learning_rate * alpha
+    -- update weights
+    local h = predict(models, train_data)
+    local log_h = mop.log( h )
+    local err   = loss:compute_loss(log_h, Y)
+    local grads = loss:gradient(log_h, Y)
+    weights = weights or matrix(N, 1)
+    grads:sum(2, weights)
+    weights:abs():pow(0.5)
+    weights:scal( 1/weights:sum() )
+    --
+    print("# TR", (ann.loss.multi_class_cross_entropy():compute_loss(log_h, Y)))
+    print("# ALPHA", models[i][3])
+  end
+  return models
 end
 
 local function bagging(NUM_CLASSES, NUM_BAGS, MAX_FEATS, rnd,
@@ -234,12 +474,14 @@ end
 
 -- exported functions
 return {
+  adaboost = adaboost,
   add_clusters_similarity = add_clusters_similarity,
   bagging = bagging,
   bootstrap = bootstrap,
   compute_center_scale = compute_center_scale,
   compute_clusters = compute_clusters,
   create_ds = create_ds,
+  gradient_boosting = gradient_boosting,
   load_CSV = load_CSV,
   predict = predict,
   preprocess = preprocess,

@@ -31,10 +31,11 @@ val_labels = val_data[:,93]
 model = fit(train_feats, train_labels)
 val_p = model.predict_proba(val_feats)
 print sk.metrics.log_loss(val_labels, val_p)
+common.save_csv("validation.rf.csv", val_p)
 
 train_feats = data[:,0:93]
 train_labels = data[:,93]
 model = fit(train_feats, train_labels)
-test_feats = load_csv("DATA/test.csv")
+test_feats = common.load_csv("DATA/test.csv")
 test_p = model.predict_proba(test_feats)
 common.save_csv("result.rf.csv", test_p)

@@ -104,6 +104,11 @@ local function load_CSV(filename)
   return m,labels
 end
 
+local function one_hot(train_labels, C)
+  return dataset.indexed(dataset.matrix(train_labels),
+                         { dataset.identity(C) }):toMatrix()
+end
+
 local function preprocess(data,args,extra)
   local extra = extra or {}
   local new_cols,idf = {},nil
@@ -228,10 +233,39 @@ local function predict(models, data, calculate)
   return p
 end
 
+local function compute_loss_and_write_validation(NUM_CLASSES,
+                                                 models, predict,
+                                                 train_data, train_labels,
+                                                 val_data, val_labels,
+                                                 out_filename)
+  local function compute_loss(data, labels)
+    collectgarbage("collect")
+    local ce = ann.loss.multi_class_cross_entropy()
+    local p = predict(models, data)
+    local log_p = mop.log(p)
+    local tgt = one_hot(labels, NUM_CLASSES)
+    ce:accum_loss(ce:compute_loss(log_p, tgt))
+    local loss,var = ce:get_accum_loss()
+    return loss,var,p
+  end
+  local tr_loss,tr_var = compute_loss(train_data, train_labels)
+  local va_loss,va_var,val_p = compute_loss(val_data, val_labels)
+  print("# TR LOSS", tr_loss, tr_var)
+  print("# VA LOSS", va_loss, va_var)
+  --
+  local cm = stats.confusion_matrix(NUM_CLASSES)
+  local _,val_cls = val_p:max(2)
+  cm:addData(dataset.matrix(val_cls:to_float()), dataset.matrix(val_labels))
+  cm:printConfusion()
+  --
+  write_submission(out_filename, val_p)
+end
+
+
 local function weighted_bootstrap(alpha, weights, rnd, ...)
   local t = table.pack(...)
-  local N = alpha*t[1]:dim(1)
   local alpha = alpha or 1
+  local N = alpha*t[1]:dim(1)
   local weights = weights or matrix(N,1):fill(1/N)
   local dice = random.dice(weights:toTable())
   local boot = matrixInt32(N):map(function(x) return dice:thrown(rnd) end)
@@ -243,11 +277,6 @@ local function bootstrap(rnd, ...)
   local t = table.pack(...)
   local N = t[1]:dim(1)
   return weighted_bootstrap(nil, matrix(N):fill(1/N), rnd, ...)
-end
-
-local function one_hot(train_labels, C)
-  return dataset.indexed(dataset.matrix(train_labels),
-                         { dataset.identity(C) }):toMatrix()
 end
 
 -- http://web.stanford.edu/~hastie/Papers/samme.pdf (SAMME)
@@ -355,10 +384,6 @@ local function logistic(x)
   return 1/(1 + math.exp(-x))
 end
 
-local function logistic_der(x)
-  return x*(1-x)
-end
-
 local function line_search(loss, h1, h2, Y)
   local log_h1 = mop.log(h1)
   local log_h2 = mop.log(h2)
@@ -378,7 +403,8 @@ end
 local function gradient_boosting(loss, learning_rate, LP,
                                  NUM_CLASSES, NUM_ITERS, rnd,
                                  train_data, train_labels,
-                                 val_data, val_labels, train, predict)
+                                 val_data, val_labels, train, predict,
+                                 val_filename)
   local state = {}
   local N = train_data:dim(1)
   local Y = one_hot(train_labels, NUM_CLASSES)
@@ -419,20 +445,26 @@ local function gradient_boosting(loss, learning_rate, LP,
     local err   = loss:compute_loss(log_h, Y)
     local abs_grads = loss:gradient(log_h, Y):abs()
     weights = weights or matrix(N, 1)
-    abs_grads:sum(2, weights)
-    weights:pow(1/LP)
+    abs_grads:sum( 2, weights )
+    weights:pow( 1/LP )
     weights:scal( 1/weights:sum() )
     --
     print("# TR", (ann.loss.multi_class_cross_entropy():compute_loss(log_h, Y)))
     print("# ALPHA", models[i][3])
   end
+  compute_loss_and_write_validation(NUM_CLASSES,
+                                    models, predict,
+                                    train_data, train_labels,
+                                    val_data, val_labels,
+                                    val_filename)
+
   return models
 end
 
 local function bagging(NUM_CLASSES, NUM_BAGS, MAX_FEATS, rnd,
                        train_data, train_labels,
                        val_data, val_labels,
-                       train, predict)
+                       train, predict, val_filename)
   MAX_FEATS = MAX_FEATS or train_data:dim(2)
   local val_in_ds,val_out_ds = create_ds(val_data, val_labels, NUM_CLASSES)
   local val_out = val_out_ds:toMatrix()
@@ -462,6 +494,11 @@ local function bagging(NUM_CLASSES, NUM_BAGS, MAX_FEATS, rnd,
     ce:accum_loss(ce:compute_loss(val_log_p, val_out))
     print("# VA LOSS BAG", i, ce:get_accum_loss())
   end
+  compute_loss_and_write_validation(NUM_CLASSES,
+                                    models, predict,
+                                    train_data, train_labels,
+                                    val_data, val_labels,
+                                    val_filename)
   return models
 end
 

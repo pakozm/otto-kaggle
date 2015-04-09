@@ -1,3 +1,5 @@
+april_print_script_header(arg)
+
 local common = require "scripts.common"
 local bagging    = common.bagging
 local create_ds  = common.create_ds
@@ -10,13 +12,17 @@ local wrnd = random(24825)
 local srnd = random(52958)
 local prnd = random(24925)
 local NUM_CLASSES  = 9
-local HSIZE        = tonumber(arg[1] or 256)
-local DEEP_SIZE    = tonumber(arg[2] or 2)
-local bunch_size   = tonumber(arg[3] or 512)
-local NUM_BAGS     = tonumber(arg[4] or 1)
-local MAX_FEATS    = tonumber(arg[5])
-local wd           = tonumber(arg[6] or 0.0)
-local var          = tonumber(arg[7] or 0.2)
+local ID           = assert(tonumber(arg[1]))
+local HSIZE        = tonumber(arg[2] or 256)
+local DEEP_SIZE    = tonumber(arg[3] or 2)
+local bunch_size   = tonumber(arg[4] or 512)
+local NUM_BAGS     = tonumber(arg[5] or 1)
+local MAX_FEATS    = tonumber(arg[6])
+local wd           = tonumber(arg[7] or 0.0)
+local var          = tonumber(arg[8] or 0.2)
+
+print("# hsize, deep_size, bunch_size, num_bags, max_feats, wd, var")
+print("#", HSIZE, DEEP_SIZE, bunch_size, NUM_BAGS, MAX_FEATS, wd, var)
 
 local max_epochs = 10000
 
@@ -25,6 +31,10 @@ local options = {
   --learning_rate = 0.4,
   --momentum = 0.4,
 }
+
+print("# max_epochs", max_epochs)
+print("# optimizer", optimizer)
+print("# options", iterator(pairs(options)):concat("="," "))
 
 local bagging_iteration=0
 local function train(train_data, train_labels, val_data, val_labels)
@@ -89,10 +99,10 @@ local predict_mlp = function(models, data)
   return p
 end
 
-local train_data = matrix.fromTabFilename("DATA/train_feats.noname.split.mat.gz")
-local train_labels = matrix.fromTabFilename("DATA/train_labels.noname.split.mat.gz")
-local val_data = matrix.fromTabFilename("DATA/val_feats.noname.split.mat.gz")
-local val_labels = matrix.fromTabFilename("DATA/val_labels.noname.split.mat.gz")
+local train_data = matrix.fromTabFilename("DATA/train_feats.std.split.mat.gz")
+local train_labels = matrix.fromTabFilename("DATA/train_labels.split.mat.gz")
+local val_data = matrix.fromTabFilename("DATA/val_feats.std.split.mat.gz")
+local val_labels = matrix.fromTabFilename("DATA/val_labels.split.mat.gz")
 
 print("# DATA SIZES", train_data:dim(1), train_data:dim(2),
       val_data:dim(1), val_data:dim(2))
@@ -100,27 +110,13 @@ print("# DATA SIZES", train_data:dim(1), train_data:dim(2),
 local bagging_models = bagging(NUM_CLASSES, NUM_BAGS, MAX_FEATS, rnd,
                                train_data, train_labels,
                                val_data, val_labels,
-                               train, predict_mlp)
-
-local ce = ann.loss.multi_class_cross_entropy()
-local val_p = predict_mlp(bagging_models, val_data)
-local val_log_p = mop.log(val_p)
-local val_in_ds,val_out_ds = create_ds(val_data, val_labels, NUM_CLASSES)
-local tgt = val_out_ds:toMatrix()
-ce:accum_loss(ce:compute_loss(val_log_p, val_out_ds:toMatrix()))
-print("# VA LOSS", ce:get_accum_loss())
-
-local cm = stats.confusion_matrix(NUM_CLASSES)
-local _,val_cls = val_p:max(2)
-cm:addData(dataset.matrix(val_cls:to_float()), dataset.matrix(val_labels))
-cm:printConfusion()
-
-write_submission("validation.mlp.csv", val_p)
+                               train, predict_mlp,
+                               "ID_%03d.validation.mlp.csv"%{ID})
 
 -----------------------------------------------------------------------------
 
-local test_data = matrix.fromTabFilename("DATA/test_feats.noname.split.mat.gz")
+local test_data = matrix.fromTabFilename("DATA/test_feats.std.split.mat.gz")
 local test_p = predict_mlp(bagging_models, test_data)
 print(test_p)
 
-write_submission("result.mlp.csv", test_p)
+write_submission("ID_%03d.test.mlp.csv"%{ID}, test_p)

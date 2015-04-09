@@ -19,23 +19,23 @@ def fit(train_feats, train_labels):
     model.fit(train_feats, train_labels)
     return model
 
-data = common.load_csv("DATA/train.csv")
-
-train_data,val_data = train_test_split(data, test_size=0.20, random_state=42)
-
-train_feats = train_data[:,0:93]
-train_labels = train_data[:,93]
-val_feats = val_data[:,0:93]
-val_labels = val_data[:,93]
+train_feats  = np.loadtxt("DATA/train_feats.raw.split.mat.gz")
+train_labels = np.loadtxt("DATA/train_labels.split.mat.gz")
+val_feats    = np.loadtxt("DATA/val_feats.raw.split.mat.gz")
+val_labels   = np.loadtxt("DATA/val_labels.split.mat.gz")
 
 model = fit(train_feats, train_labels)
 val_p = model.predict_proba(val_feats)
-print sk.metrics.log_loss(val_labels, val_p)
+print "# TR LOSS",sk.metrics.log_loss(train_labels, train_p)
+print "# VA LOSS",sk.metrics.log_loss(val_labels, val_p)
+val_cls = model.predict(val_feats)
+print "# VA ACC ",sk.metrics.accuracy_score(val_labels, val_cls)
 common.save_csv("validation.rf.csv", val_p)
 
-train_feats = data[:,0:93]
-train_labels = data[:,93]
+train_feats = np.concatenate( (train_feats, val_feats), axis=0 )
+train_labels = np.concatenate( (train_labels, val_labels), axis=0 )
+
 model = fit(train_feats, train_labels)
-test_feats = common.load_csv("DATA/test.csv")
+test_feats = np.loadtxt("DATA/test_feats.raw.split.mat.gz")
 test_p = model.predict_proba(test_feats)
 common.save_csv("result.rf.csv", test_p)

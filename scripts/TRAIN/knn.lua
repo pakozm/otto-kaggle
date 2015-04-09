@@ -1,3 +1,5 @@
+april_print_script_header(arg)
+
 local common = require "scripts.common"
 local bagging    = common.bagging
 local bootstrap  = common.bootstrap
@@ -15,9 +17,10 @@ local rnd  = random(12394)
 local wrnd = random(24825)
 local srnd = random(52958)
 local prnd = random(24925)
-local use_all = tonumber(arg[1])
-local NUM_BAGS = tonumber(arg[2] or 1)
-local MAX_FEATS = tonumber(arg[3] or 9)
+local ID = assert(tonumber(arg[1]))
+local use_all = tonumber(arg[2])
+local NUM_BAGS = tonumber(arg[3] or 1)
+local MAX_FEATS = tonumber(arg[4] or 9)
 local NUM_CLASSES  = 9
 local K = 1000
 

@@ -4,16 +4,25 @@ import sklearn as sk
 import numpy as np
 import math
 import random
+import sys
 
 from sklearn.cross_validation import train_test_split
 from sklearn import ensemble
 
+ID=int(sys.argv[1])
+
 NUM_TREES=1000
-MAX_FEATS=40
+MAX_FEATS=0.8
+MAX_DEPTH=10
+MIN_SAMPLES_SPLIT=4
+SUBSAMPLE=0.9
 
 def fit(train_feats, train_labels):
     model = ensemble.GradientBoostingClassifier(n_estimators=NUM_TREES,
                                                 max_features=MAX_FEATS,
+                                                max_depth=MAX_DEPTH,
+                                                min_samples_split=MIN_SAMPLES_SPLIT,
+                                                subsample=SUBSAMPLE,
                                                 random_state=123,
                                                 verbose=0,
                                                 loss='deviance')
@@ -33,7 +42,7 @@ print "# VA LOSS",sk.metrics.log_loss(val_labels, val_p)
 val_cls = model.predict(val_feats)
 print "# VA ACC ",sk.metrics.accuracy_score(val_labels, val_cls)
 
-common.save_csv("validation.bt.csv", val_p)
+common.save_csv("ID_%03d.validation.bt.csv"%(ID), val_p)
 
 train_feats = np.concatenate( (train_feats, val_feats), axis=0 )
 train_labels = np.concatenate( (train_labels, val_labels), axis=0 )
@@ -41,4 +50,4 @@ train_labels = np.concatenate( (train_labels, val_labels), axis=0 )
 model = fit(train_feats, train_labels)
 test_feats = np.loadtxt("DATA/test_feats.raw.split.mat.gz")
 test_p = model.predict_proba(test_feats)
-common.save_csv("result.bt.csv", test_p)
+common.save_csv("ID_%03d.test.bt.csv"%(ID), test_p)

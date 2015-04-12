@@ -54,9 +54,12 @@ local function train(train_data, train_labels, val_data, val_labels)
   end
   print("# HSIZE", HSIZE)
   local isize = train_data:dim(2)
-  local model = ann.mlp.all_all.generate("%d inputs %d relu 0.5 dropout(#1) %d relu 0.5 dropout(#1) %d log_softmax"%
-                                           { isize, HSIZE, HSIZE, NUM_CLASSES },
-                                         { prnd })
+  local model = ann.mlp.all_all.generate(
+    [[ %d inputs
+       %d relu dropout{prob=0.5,random=#1}
+       %d relu dropout{prob=0.5,random=#1}
+       %d log_softmax ]]%{ isize, HSIZE, HSIZE, NUM_CLASSES },
+    { prnd })
   local trainer = trainable.supervised_trainer(model,
                                                ann.loss.multi_class_cross_entropy(),
                                                bunch_size,

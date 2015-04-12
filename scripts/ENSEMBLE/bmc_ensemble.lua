@@ -55,4 +55,4 @@ print(table.concat(weights:toTable()," "))
 print("# VA", val_ensemble:compute_loss(weights))
 --
 local test_p = test_ensemble:calculate(weights)
-write_submission("ID_%03d.test.ensemble.csv"%{ID}, test_p)
+write_submission("ID_%03d.test.bmc.csv"%{ID}, test_p)

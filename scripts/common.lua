@@ -1,5 +1,36 @@
 local mop = matrix.op
 
+local function load_ensemble_model_from_csv(filenames,tgt)
+  local results = iterator(filenames):map(bind(matrix.fromCSVFilename, nil,
+                                               { header=true })):
+  map(function(m) return m[{':','2:'}]:clone() end):table()
+  local C = results[1]:dim(2)
+  if tgt then
+    tgt = dataset.indexed(dataset.matrix(tgt),{dataset.identity(C)}):toMatrix()
+  end
+  local calculate = function(t,w)
+    local results = t.results
+    local w = w or matrix(#results):ones()
+    assert(w:num_dim() == 1)
+    w:scal(1/w:sum())
+    local results = results
+    local ensemble = results[1]:clone():scal(w[1])
+    for i=2,#results do ensemble:axpy(w[i], results[i]) end
+    return ensemble
+  end
+  local compute_loss = function(t,w)
+    local tgt,results = t.tgt,t.results
+    assert(tgt, "Unable to compute loss without targets")
+    local log_ensemble = calculate(t,w):log()
+    local ce = ann.loss.multi_class_cross_entropy()
+    ce:accum_loss(ce:compute_loss(log_ensemble,tgt))
+    local loss,var = ce:get_accum_loss()
+    return loss,var
+  end
+  return { results = results, tgt = tgt,
+           calculate = calculate, compute_loss = compute_loss, }
+end
+
 local function compute_clusters(data, labels, NUM_CLASSES)
   local clusters = matrix(NUM_CLASSES, data:dim(2))
   for i=1,NUM_CLASSES do
@@ -218,15 +249,22 @@ local function split(rnd, p, ...)
 end
 
 local function predict(models, data, calculate)
+  local STEP = 2048
   local p
+  local N = data:dim(1)
   local sum = 0
   for i=1,#models do
     collectgarbage("collect")
     local filename,transform,w = table.unpack(models[i])
     w = w or 1/#models
     local model = util.deserialize(filename)
-    local current = calculate(model, transform(data))
-    if not p then p = current:scal(w) else p:axpy(w, current) end
+    for j=1,N,STEP do
+      local range = {j, math.min(N,j+STEP-1)}
+      local slice = data[{range,':'}]
+      local current = calculate(model, transform(slice))
+      if not p then p = matrix(N,current:dim(2)):zeros() end
+      p[{range,':'}]:axpy(w, current)
+    end
     sum = sum + w
   end
   p:scal(1/sum)
@@ -513,6 +551,7 @@ return {
   create_ds = create_ds,
   gradient_boosting = gradient_boosting,
   load_CSV = load_CSV,
+  load_ensemble_model_from_csv = load_ensemble_model_from_csv,
   predict = predict,
   preprocess = preprocess,
   split = split,

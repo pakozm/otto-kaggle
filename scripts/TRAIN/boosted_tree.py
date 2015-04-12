@@ -12,17 +12,17 @@ from sklearn import ensemble
 ID=int(sys.argv[1])
 
 NUM_TREES=1000
-MAX_FEATS=0.8
+MAX_FEATS=40
 MAX_DEPTH=10
-MIN_SAMPLES_SPLIT=4
+#MIN_SAMPLES_SPLIT=4
 SUBSAMPLE=0.9
 
 def fit(train_feats, train_labels):
     model = ensemble.GradientBoostingClassifier(n_estimators=NUM_TREES,
                                                 max_features=MAX_FEATS,
-                                                max_depth=MAX_DEPTH,
-                                                min_samples_split=MIN_SAMPLES_SPLIT,
-                                                subsample=SUBSAMPLE,
+                                                #max_depth=MAX_DEPTH,
+                                                #min_samples_split=MIN_SAMPLES_SPLIT,
+                                                #subsample=SUBSAMPLE,
                                                 random_state=123,
                                                 verbose=0,
                                                 loss='deviance')

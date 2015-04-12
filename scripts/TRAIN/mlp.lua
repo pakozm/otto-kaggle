@@ -13,24 +13,33 @@ local srnd = random(52958)
 local prnd = random(24925)
 local NUM_CLASSES  = 9
 local ID           = assert(tonumber(arg[1]))
-local HSIZE        = tonumber(arg[2] or 256)
+local HSIZE        = tonumber(arg[2] or 900)
 local DEEP_SIZE    = tonumber(arg[3] or 2)
 local bunch_size   = tonumber(arg[4] or 512)
 local NUM_BAGS     = tonumber(arg[5] or 1)
 local MAX_FEATS    = tonumber(arg[6])
 local wd           = tonumber(arg[7] or 0.0)
 local var          = tonumber(arg[8] or 0.2)
+local mp           = tonumber(arg[9] or 999)
+local feats_name   = arg[10] or "std"
+local opt          = arg[11] or "adadelta"
 
-print("# hsize, deep_size, bunch_size, num_bags, max_feats, wd, var")
-print("#", HSIZE, DEEP_SIZE, bunch_size, NUM_BAGS, MAX_FEATS, wd, var)
+print("# hsize deep_size bunch_size num_bags max_feats wd var mp feats")
+print("#", HSIZE, DEEP_SIZE, bunch_size, NUM_BAGS,
+      MAX_FEATS, wd, var, mp, feats_name)
 
-local max_epochs = 10000
+local max_epochs = 1000
 
-local optimizer = "adadelta"
+local optimizer = opt
 local options = {
   --learning_rate = 0.4,
-  --momentum = 0.4,
+  --momentum = 0.9,
+  max_norm_penalty = (mp < 999 and mp) or nil
 }
+for i=12,#arg do
+  local k,v = arg[i]:match("([^%=]+)%=([^%=]+)")
+  options[k] = tonumber(v)
+end
 
 print("# max_epochs", max_epochs)
 print("# optimizer", optimizer)
@@ -45,15 +54,9 @@ local function train(train_data, train_labels, val_data, val_labels)
   end
   print("# HSIZE", HSIZE)
   local isize = train_data:dim(2)
-  local model = ann.components.stack()
-  for i=1,DEEP_SIZE do
-    model:push( ann.components.hyperplane{ input=isize, output=HSIZE },
-                ann.components.actf.relu(),
-                ann.components.dropout{ prob=0.5, random=prnd } )
-    isize = nil
-  end
-  model:push( ann.components.hyperplane{ input=isize, output=NUM_CLASSES },
-              ann.components.actf.log_softmax() )
+  local model = ann.mlp.all_all.generate("%d inputs %d relu 0.5 dropout(#1) %d relu 0.5 dropout(#1) %d log_softmax"%
+                                           { isize, HSIZE, HSIZE, NUM_CLASSES },
+                                         { prnd })
   local trainer = trainable.supervised_trainer(model,
                                                ann.loss.multi_class_cross_entropy(),
                                                bunch_size,
@@ -99,9 +102,9 @@ local predict_mlp = function(models, data)
   return p
 end
 
-local train_data = matrix.fromTabFilename("DATA/train_feats.std.split.mat.gz")
+local train_data = matrix.fromTabFilename("DATA/train_feats.%s.split.mat.gz"%{feats_name})
 local train_labels = matrix.fromTabFilename("DATA/train_labels.split.mat.gz")
-local val_data = matrix.fromTabFilename("DATA/val_feats.std.split.mat.gz")
+local val_data = matrix.fromTabFilename("DATA/val_feats.%s.split.mat.gz"%{feats_name})
 local val_labels = matrix.fromTabFilename("DATA/val_labels.split.mat.gz")
 
 print("# DATA SIZES", train_data:dim(1), train_data:dim(2),
@@ -115,7 +118,7 @@ local bagging_models = bagging(NUM_CLASSES, NUM_BAGS, MAX_FEATS, rnd,
 
 -----------------------------------------------------------------------------
 
-local test_data = matrix.fromTabFilename("DATA/test_feats.std.split.mat.gz")
+local test_data = matrix.fromTabFilename("DATA/test_feats.%s.split.mat.gz"%{feats_name})
 local test_p = predict_mlp(bagging_models, test_data)
 print(test_p)
 

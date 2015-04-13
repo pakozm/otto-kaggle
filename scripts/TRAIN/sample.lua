@@ -88,6 +88,8 @@ local test_feats = matrix.fromCSVFilename("test.csv", { header=true })
 local output_ds = best:use_dataset{
   input_dataset = dataset.matrix(test_feats[{':','2:'}]:clone())
 }
-local output = matrix.join(2, { matrix(test_feats:dim(1),1):linspace(), -- ids
-                                output_ds:toMatrix():exp() }) -- results
+local i=0
+local ids = matrix(test_feats:dim(1),1):map(function() i=i+1 return i end)
+local results = output_ds:toMatrix():exp()
+local output = matrix.join(2, { ids, results })
 output:toCSVFilename("submission.csv", { header=header_tbl })

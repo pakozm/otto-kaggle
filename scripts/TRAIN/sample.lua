@@ -2,10 +2,12 @@ local rnd = random(12394)
 local bunch_size = 64 -- mini-batch
 local ratio = 0.8
 local topology = "93 inputs 200 relu dropout{prob=0.5,random=#1} 200 relu 9 log_softmax"
+local cls_map = iterator.range(9):map(function(i) return "Class_"..i,i end):table()
+local header_tbl = iterator.range(9):map(function(i) return i,"Class_"..i end):table()
+table.insert(header_tbl, 1, "id")
 --
 local function load_train_data(filename)
   print("# Loading training data")
-  local cls_map = iterator.range(9):map(function(i) return "Class_"..i,i end):table()
   local data = matrix.fromCSVFilename(filename, { header=true, map=cls_map })
   local N = data:dim(1)
   local shuf = matrixInt32(rnd:shuffle(N))
@@ -80,3 +82,10 @@ print("# Starting training")
 while pocket:execute(train_function) do
   print(pocket:get_state_string())
 end
+local best = pocket:get_state_table().best
+
+local test_feats = matrix.fromCSVFilename("test.csv", { header=true })
+local output_ds = best:use_dataset{ input_dataset = dataset.matrix(test_feats) }
+local output = matrix.join(2, { matrix(test_feats:dim(1),1):linspace(), -- ids
+                                output_ds:toMatrix() }) -- results
+output:toCSVFilename("submission.csv", { header=header_tbl })

@@ -2,14 +2,9 @@ april_print_script_header(arg)
 
 local common = require "scripts.common"
 local bagging    = common.bagging
-local bootstrap  = common.bootstrap
-local compute_center_scale = common.compute_center_scale
 local create_ds  = common.create_ds
-local load_CSV   = common.load_CSV
 local predict    = common.predict
-local preprocess = common.preprocess
 local split      = common.split
-local train_mlp  = common.train_mlp
 local write_submission = common.write_submission
 local posteriorKNN = knn.kdtree.posteriorKNN
 local mop  = matrix.op
@@ -18,11 +13,14 @@ local wrnd = random(24825)
 local srnd = random(52958)
 local prnd = random(24925)
 local ID = assert(tonumber(arg[1]))
-local use_all = tonumber(arg[2])
-local NUM_BAGS = tonumber(arg[3] or 1)
-local MAX_FEATS = tonumber(arg[4] or 9)
+local NUM_BAGS = tonumber(arg[2] or 1)
+local MAX_FEATS = tonumber(arg[3])
+local feats_name = arg[4] or "std"
 local NUM_CLASSES  = 9
 local K = 1000
+
+print("# num_bags max_feats feats")
+print("#", NUM_BAGS, MAX_FEATS, feats_name)
 
 local function learn(data)
   local model = knn.kdtree(data:dim(2), rnd)
@@ -34,10 +32,15 @@ end
 local isize
 local function train_knn(train_data, train_labels, val_data, val_labels)
   isize = train_data:dim(2)
+  local N = math.round(0.1 * train_data:dim(1))
+  local slice = { {1,N},':' }
+  local train_data = train_data[slice]
+  local train_labels = train_labels[slice]
   return { train_data, train_labels }
 end
 
 local predict_knn = function(models, data)
+  collectgarbage("collect")
   local func = function(model, data)
     local tr_data,labels = table.unpack(model)
     local kdt = learn(tr_data)
@@ -60,24 +63,10 @@ local predict_knn = function(models, data)
   return p
 end
 
-local all_train_data,all_train_labels = load_CSV("DATA/train.csv", false)
-local all_train_data = preprocess(all_train_data, { add_nz=true, add_sum=true })
--- local center,scale = compute_center_scale(all_train_data)
-local all_train_data,center,scale =
-  stats.standardize(all_train_data, { center=center, scale=scale })
---local U,S,VT = stats.pca(all_train_data, { centered=true })
---local takeN,eigen_value,prob_mass=stats.pca.threshold(S, 0.99)
--- print("#",takeN,eigen_value,prob_mass)
---local all_train_data = stats.zca.whitening(all_train_data,U,S,eigen_value)
---
-local train_data,val_data,train_labels,val_labels = split(rnd, 0.8,
-                                                          all_train_data,
-                                                          all_train_labels)
-
-if use_all then
-  train_data = all_train_data
-  train_labels = all_train_labels
-end
+local train_data = matrix.fromTabFilename("DATA/train_feats.%s.split.mat.gz"%{feats_name})
+local train_labels = matrix.fromTabFilename("DATA/train_labels.split.mat.gz")
+local val_data = matrix.fromTabFilename("DATA/val_feats.%s.split.mat.gz"%{feats_name})
+local val_labels = matrix.fromTabFilename("DATA/val_labels.split.mat.gz")
 
 local val_in_ds,val_out_ds = create_ds(val_data, val_labels, NUM_CLASSES)
 local bagging_models = bagging(NUM_CLASSES, NUM_BAGS, MAX_FEATS, rnd,
@@ -103,11 +92,7 @@ cm:printConfusion()
 --model:push(all_train_data)
 --model:build()
 
-local test_data,test_labels = load_CSV("DATA/test.csv", false)
-local test_data = preprocess(test_data, { add_nz=true, add_sum=true })
-local test_data = stats.standardize(test_data, { center=center, scale=scale })
---local test_data = stats.zca.whitening(test_data,U,S,eigen_value)
-
+local test_data = matrix.fromTabFilename("DATA/test_feats.%s.split.mat.gz"%{feats_name})
 local test_p = predict_knn(bagging_models, test_data)
 print(test_p)
 

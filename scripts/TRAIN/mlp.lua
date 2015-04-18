@@ -23,12 +23,14 @@ local var          = tonumber(arg[8] or 0.2)
 local mp           = tonumber(arg[9] or 999)
 local feats_name   = arg[10] or "std"
 local opt          = arg[11] or "adadelta"
+local ACTF         = "relu"
+local use_droput   = true
 
-print("# hsize deep_size bunch_size num_bags max_feats wd var mp feats")
+print("# hsize deep_size bunch_size num_bags max_feats wd var mp feats actf")
 print("#", HSIZE, DEEP_SIZE, bunch_size, NUM_BAGS,
-      MAX_FEATS, wd, var, mp, feats_name)
+      MAX_FEATS, wd, var, mp, feats_name, ACTF)
 
-local max_epochs = 1000
+local max_epochs = 10000
 
 local optimizer = opt
 local options = {
@@ -54,12 +56,17 @@ local function train(train_data, train_labels, val_data, val_labels)
   end
   print("# HSIZE", HSIZE)
   local isize = train_data:dim(2)
-  local model = ann.mlp.all_all.generate(
-    [[ %d inputs
-       %d relu dropout{prob=0.5,random=#1}
-       %d relu dropout{prob=0.5,random=#1}
-       %d log_softmax ]]%{ isize, HSIZE, HSIZE, NUM_CLASSES },
-    { prnd })
+  local topology = { "%d inputs"%{isize} }
+  for i=1,DEEP_SIZE do
+    table.insert(topology, "%d %s"%{HSIZE,ACTF})
+    if use_droput then
+      table.insert(topology, "dropout{prob=0.5,random=#1}")
+    end
+  end
+  table.insert(topology, "%d log_softmax"%{NUM_CLASSES})
+  local topology = table.concat(topology, " ")
+  print("# MLP", topology)
+  local model = ann.mlp.all_all.generate(topology, { prnd })
   local trainer = trainable.supervised_trainer(model,
                                                ann.loss.multi_class_cross_entropy(),
                                                bunch_size,

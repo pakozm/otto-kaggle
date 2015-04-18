@@ -1,5 +1,20 @@
 local mop = matrix.op
 
+local function compute_interactions(data)
+  local D = data:dim(2)
+  local interactions = matrix(data:dim(1), D*(D-1)/2.0)
+  local k=0
+  print("# Interactions")
+  for i=1,D-1 do
+    collectgarbage("collect")
+    for j=i+1,D do
+      k=k+1
+      interactions[{':',k}]:copy( data[{':',i}] ):cmul( data[{':',j}] )
+    end
+  end
+  return interactions
+end
+
 local function load_ensemble_model_from_csv(filenames,tgt)
   local results = iterator(filenames):map(bind(matrix.fromCSVFilename, nil,
                                                { header=true })):
@@ -160,17 +175,7 @@ local function preprocess(data,args,extra)
     table.insert(new_cols, (stats.var(data,2):scal(data:dim(2)-1)/nz):sqrt():log1p())
   end
   if args.add_interactions and args.add_interactions>0 then
-    local D = data:dim(2)
-    local interactions = matrix(data:dim(1), D*(D-1)/2.0)
-    local k=0
-    print("# Interactions")
-    for i=1,D-1 do
-      collectgarbage("collect")
-      for j=i+1,D do
-        k=k+1
-        interactions[{':',k}]:copy( data[{':',i}] ):cmul( data[{':',j}] )
-      end
-    end
+    local interactions = compute_interactions(data)
     interactions:log1p()
     extra.interactions = extra.interactions or {}
     local center,scale = extra.interactions.center,extra.interactions.scale
@@ -548,6 +553,7 @@ return {
   bootstrap = bootstrap,
   compute_center_scale = compute_center_scale,
   compute_clusters = compute_clusters,
+  compute_interactions = compute_interactions,
   create_ds = create_ds,
   gradient_boosting = gradient_boosting,
   load_CSV = load_CSV,

@@ -1,7 +1,11 @@
+local train_filename  = "train.csv"
+local test_filename   = "test.csv"
+local result_filename = "submission.csv"
 local rnd = random(12394)
-local bunch_size = 64 -- mini-batch
-local ratio = 0.8
+local bunch_size = 64 -- mini-batch size
+local ratio = 0.8     -- 80% for training, 20% for validation
 local topology = "93 inputs 200 relu dropout{prob=0.5,random=#1} 200 relu 9 log_softmax"
+--
 local cls_map = iterator.range(9):map(function(i) return "Class_"..i,i end):table()
 local header_tbl = iterator.range(9):map(function(i) return i,"Class_"..i end):table()
 table.insert(header_tbl, 1, "id")
@@ -50,7 +54,7 @@ local function one_hot_ds(labels)
 end
 
 local train_feats, train_labels,
-val_feats, val_labels, center, scale = load_train_data("train.csv")
+val_feats, val_labels, center, scale = load_train_data(train_filename)
 collectgarbage("collect")
 
 local trainer = generate_trainer()
@@ -78,13 +82,17 @@ local function train_function()
   return trainer,tr,va
 end
 
+----------------------------------------------------------------------------
+
 print("# Starting training")
 while pocket:execute(train_function) do
   print(pocket:get_state_string())
 end
 local best = pocket:get_state_table().best
 
-local test_feats = matrix.fromCSVFilename("test.csv", { header=true })
+----------------------------------------------------------------------------
+
+local test_feats = matrix.fromCSVFilename(test_filename, { header=true })
 local test_feats = stats.standardize(test_feats[{':','2:'}]:log1p(),
                                      { center=center, scale=scale })
 local output_ds = best:use_dataset{ input_dataset = dataset.matrix(test_feats) }
@@ -92,4 +100,4 @@ local i=0
 local ids = matrix(test_feats:dim(1),1):map(function() i=i+1 return i end)
 local results = output_ds:toMatrix():exp():clamp(1e-6, 1.0 - 1e-06)
 local output = matrix.join(2, { ids, results })
-output:toCSVFilename("submission.csv", { header=header_tbl })
+output:toCSVFilename(result_filename, { header=header_tbl })

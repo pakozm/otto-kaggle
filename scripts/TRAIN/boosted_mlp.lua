@@ -1,3 +1,4 @@
+mathcore.set_use_cuda_default( util.is_cuda_available() )
 april_print_script_header(arg)
 
 local common = require "scripts.common"
@@ -15,14 +16,17 @@ local srnd = random(52958)
 local prnd = random(24925)
 local NUM_CLASSES  = 9
 local ID = assert(tonumber(arg[1]))
-local HSIZE        = tonumber(arg[2] or 256)
+local HSIZE        = tonumber(arg[2] or 900)
 local DEEP_SIZE    = tonumber(arg[3] or 2)
 local bunch_size   = tonumber(arg[4] or 512)
-local NUM_BAGS     = tonumber(arg[5] or 10)
+local NUM_BAGS     = tonumber(arg[5] or 200)
+local ACTF         = "prelu"
+local input_drop   = 0.2
+local use_dropout  = true
 
 local ver="std"
 
-local max_epochs = 1000
+local max_epochs = 10000
 
 local optimizer = "adadelta"
 local options = {
@@ -33,21 +37,27 @@ local options = {
 local function train(train_data, train_labels, val_data, val_labels)
   print("# HSIZE", HSIZE)
   local isize = train_data:dim(2)
-  local model = ann.components.stack()
-  for i=1,DEEP_SIZE do
-    model:push( ann.components.hyperplane{ input=isize, output=HSIZE },
-                ann.components.actf.relu(),
-                ann.components.dropout{ prob=0.5, random=prnd } )
-    isize = nil
+    local topology = { "%d inputs"%{isize} }
+  if use_dropout then
+    table.insert(topology, "dropout{prob=#2,random=#1}")
   end
-  model:push( ann.components.hyperplane{ input=isize, output=NUM_CLASSES },
-              ann.components.actf.log_softmax() )
+  for i=1,DEEP_SIZE do
+    table.insert(topology, "%d %s"%{HSIZE,ACTF})
+    if use_dropout then
+      table.insert(topology, "dropout{prob=0.5,random=#1}")
+    end
+  end
+  table.insert(topology, "%d log_softmax"%{NUM_CLASSES})
+  local topology = table.concat(topology, " ")
+  print("# MLP", topology)
+  local model = ann.mlp.all_all.generate(topology, { prnd, input_drop })
   local trainer = trainable.supervised_trainer(model,
                                                ann.loss.multi_class_cross_entropy(),
                                                bunch_size,
                                                ann.optimizer[optimizer]())
   trainer:build()
   trainer:randomize_weights{
+    name_match = "[bw].*",
     random = wrnd,
     inf = -3,
     sup = 3,
@@ -55,6 +65,7 @@ local function train(train_data, train_labels, val_data, val_labels)
     use_fanout = true,
   }
   for _,b in trainer:iterate_weights("b.*") do b:zeros() end
+  for _,a in trainer:iterate_weights("a.*") do a:fill(0.25) end
   trainer:set_layerwise_option("w.*", "weight_decay", 0.00)
   for name,value in ipairs(options) do
     trainer:set_option(name, value)
@@ -66,7 +77,7 @@ local function train(train_data, train_labels, val_data, val_labels)
   
   local train_in_ds = dataset.perturbation{ dataset  = train_in_ds,
                                             random   = prnd,
-                                            variance = 0.2 }
+                                            variance = 0.0 }
   
   local best = train_mlp(trainer,
                          max_epochs,

@@ -106,10 +106,10 @@ local function create_ds(data, labels, NUM_CLASSES)
   return in_ds,out_ds
 end
 
-local function train_mlp(trainer, max_epochs, train_tbl, val_tbl, use_all)
+local function train_mlp(trainer, max_epochs, train_tbl, val_tbl)
   local criterion = trainable.stopping_criteria.make_max_epochs_wo_imp_relative(2.0)
   local pocket = trainable.train_holdout_validation{ min_epochs=100,
-                                                     max_epochs=use_all or max_epochs,
+                                                     max_epochs=max_epochs,
                                                      stopping_criterion = criterion }
   while pocket:execute(function()
       local tr = trainer:train_dataset(train_tbl)
@@ -130,9 +130,10 @@ local function tf_idf(data, idf)
   return result,idf
 end
 
+local cls_map = iterator.range(9):map(function(i) return "Class_"..i,i end):table()
 local function load_CSV(filename)
   print("# Loading", filename)
-  local m,header = matrix.fromCSVFilename(filename, { header=true })
+  local m,header = matrix.fromCSVFilename(filename, { header=true, map=cls_map })
   local labels
   if #header == 95 then
     local f = io.open(filename)

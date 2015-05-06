@@ -1,4 +1,6 @@
+mathcore.set_use_cuda_default( util.is_cuda_available() )
 april_print_script_header(arg)
+print("# CUDA:", util.is_cuda_available())
 
 local common = require "scripts.common"
 local bagging    = common.bagging
@@ -19,26 +21,27 @@ local bunch_size   = tonumber(arg[4] or 512)
 local NUM_BAGS     = tonumber(arg[5] or 1)
 local MAX_FEATS    = tonumber(arg[6])
 local wd           = tonumber(arg[7] or 0.0)
-local var          = tonumber(arg[8] or 0.2)
+local var          = tonumber(arg[8] or 0.0)
 local mp           = tonumber(arg[9] or 999)
 local feats_name   = arg[10] or "std"
 local opt          = arg[11] or "adadelta"
-local ACTF         = "relu"
-local use_droput   = true
+local ACTF         = arg[12] or "prelu"
+local input_drop   = tonumber(arg[13] or 0.2)
+local use_dropout  = true
 
-print("# hsize deep_size bunch_size num_bags max_feats wd var mp feats actf")
+print("# hsize deep_size bunch_size num_bags max_feats wd var mp feats actf input_drop")
 print("#", HSIZE, DEEP_SIZE, bunch_size, NUM_BAGS,
-      MAX_FEATS, wd, var, mp, feats_name, ACTF)
+      MAX_FEATS, wd, var, mp, feats_name, ACTF, input_drop)
 
-local max_epochs = 10000
+local max_epochs = 4000
 
 local optimizer = opt
 local options = {
-  --learning_rate = 0.4,
-  --momentum = 0.9,
+  --learning_rate = 10,
+  --momentum = 0.1,
   max_norm_penalty = (mp < 999 and mp) or nil
 }
-for i=12,#arg do
+for i=14,#arg do
   local k,v = arg[i]:match("([^%=]+)%=([^%=]+)")
   options[k] = tonumber(v)
 end
@@ -57,22 +60,27 @@ local function train(train_data, train_labels, val_data, val_labels)
   print("# HSIZE", HSIZE)
   local isize = train_data:dim(2)
   local topology = { "%d inputs"%{isize} }
+  if use_dropout then
+    table.insert(topology, "dropout{prob=#2,random=#1}")
+  end
   for i=1,DEEP_SIZE do
     table.insert(topology, "%d %s"%{HSIZE,ACTF})
-    if use_droput then
+    if use_dropout then
       table.insert(topology, "dropout{prob=0.5,random=#1}")
     end
   end
   table.insert(topology, "%d log_softmax"%{NUM_CLASSES})
   local topology = table.concat(topology, " ")
   print("# MLP", topology)
-  local model = ann.mlp.all_all.generate(topology, { prnd })
+  local model = ann.mlp.all_all.generate(topology, { prnd, input_drop })
   local trainer = trainable.supervised_trainer(model,
                                                ann.loss.multi_class_cross_entropy(),
                                                bunch_size,
-                                               ann.optimizer[optimizer]())
+                                               ann.optimizer[optimizer](),
+                                               false)
   trainer:build()
   trainer:randomize_weights{
+    name_match = "[bw].*",
     random = wrnd,
     inf = -3,
     sup = 3,
@@ -80,10 +88,9 @@ local function train(train_data, train_labels, val_data, val_labels)
     use_fanout = true,
   }
   for _,b in trainer:iterate_weights("b.*") do b:zeros() end
+  for _,a in trainer:iterate_weights("a.*") do a:fill(0.25) end
   trainer:set_layerwise_option("w.*", "weight_decay", wd)
-  for name,value in pairs(options) do
-    trainer:set_option(name, value)
-  end
+  for name,value in pairs(options) do trainer:set_option(name, value) end
   
   local train_in_ds,train_out_ds = create_ds(train_data, train_labels,
                                              NUM_CLASSES)
@@ -98,8 +105,10 @@ local function train(train_data, train_labels, val_data, val_labels)
                          { input_dataset = train_in_ds,
                            output_dataset = train_out_ds,
                            shuffle = srnd,
+                           -- loss = ann.loss.batch_fmeasure_macro_avg(),
                            replacement = math.max(2560, bunch_size) },
                          { input_dataset = val_in_ds,
+                           -- loss = ann.loss.non_paired_multi_class_cross_entropy(),
                            output_dataset = val_out_ds })
   return best
 end

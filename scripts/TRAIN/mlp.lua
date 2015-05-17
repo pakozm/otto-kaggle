@@ -28,12 +28,13 @@ local opt          = arg[11] or "adadelta"
 local ACTF         = arg[12] or "prelu"
 local input_drop   = tonumber(arg[13] or 0.2)
 local use_dropout  = true
+local use_all      = true
 
 print("# hsize deep_size bunch_size num_bags max_feats wd var mp feats actf input_drop")
 print("#", HSIZE, DEEP_SIZE, bunch_size, NUM_BAGS,
       MAX_FEATS, wd, var, mp, feats_name, ACTF, input_drop)
 
-local max_epochs = 4000
+local max_epochs = 1800
 
 local optimizer = opt
 local options = {
@@ -95,6 +96,11 @@ local function train(train_data, train_labels, val_data, val_labels)
   local train_in_ds,train_out_ds = create_ds(train_data, train_labels,
                                              NUM_CLASSES)
   local val_in_ds,val_out_ds = create_ds(val_data, val_labels, NUM_CLASSES)
+
+  if use_all then
+    train_in_ds = dataset.union{ train_in_ds, val_in_ds }
+    train_out_ds = dataset.union{ train_out_ds, val_out_ds }
+  end
   
   local train_in_ds = dataset.perturbation{ dataset  = train_in_ds,
                                             random   = prnd,

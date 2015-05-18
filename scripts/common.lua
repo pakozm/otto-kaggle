@@ -16,9 +16,14 @@ local function compute_interactions(data)
 end
 
 local function load_ensemble_model_from_csv(filenames,tgt)
-  local results = iterator(filenames):map(bind(matrix.fromCSVFilename, nil,
-                                               { header=true })):
-  map(function(m) return m[{':','2:'}]:clone() end):table()
+  local results = iterator(filenames):
+  map(function(...) print("#", ...) return ... end):
+    map(bind(matrix.fromCSVFilename, nil, { header=true })):
+    map(function(m)
+        local m = m[{':','2:'}]:clone()
+        local m = matrix.ext.broadcast(math.div, m, m:sum(2), m)
+        return m
+    end):table()
   local C = results[1]:dim(2)
   if tgt then
     tgt = dataset.indexed(dataset.matrix(tgt),{dataset.identity(C)}):toMatrix()

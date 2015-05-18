@@ -9,10 +9,10 @@ local predict    = common.predict
 local train_mlp  = common.train_mlp
 local write_submission = common.write_submission
 local mop  = matrix.op
-local rnd  = random(12394)
-local wrnd = random(24825)
-local srnd = random(52958)
-local prnd = random(24925)
+local rnd  = random(95309) --random(12394)
+local wrnd = random(53867) --random(24825)
+local srnd = random(35863) --random(52958)
+local prnd = random(78646) --random(24925)
 local NUM_CLASSES  = 9
 local ID           = assert(tonumber(arg[1]))
 local HSIZE        = tonumber(arg[2] or 900)
@@ -34,7 +34,7 @@ print("# hsize deep_size bunch_size num_bags max_feats wd var mp feats actf inpu
 print("#", HSIZE, DEEP_SIZE, bunch_size, NUM_BAGS,
       MAX_FEATS, wd, var, mp, feats_name, ACTF, input_drop)
 
-local max_epochs = 1800
+local max_epochs = 3000
 
 local optimizer = opt
 local options = {
